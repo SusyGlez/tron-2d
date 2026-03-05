@@ -16,7 +16,7 @@ const CONFIG = {
   },
 
   // Timing
-  tickInterval: 100, // ms per game tick (10 ticks/sec = 1 tile per tick)
+  tickInterval: 50, // ms per game tick (10 ticks/sec = 1 tile per tick)
   countdownDuration: 3, // seconds before round starts
   roundOverPause: 2000, // ms pause after a crash before next round
   crashEffectDuration: 500, // ms for the crash flash animation
