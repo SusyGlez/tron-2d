@@ -137,39 +137,48 @@ let collisionTime = 0; // timestamp of collision for effect timing
  * - Crash: noise burst + low thump
  * - Match fanfare: ascending sine arpeggio
  */
-const Audio = (() => {
+const GameAudio = (() => {
   let audioCtx = null;
   let masterGain = null;
   let engineNodes = []; // [{osc1, osc2, gain}] per player
-  let resumed = false;
 
   function ensureCtx() {
     if (!audioCtx) {
-      audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-      masterGain = audioCtx.createGain();
-      masterGain.connect(audioCtx.destination);
-      masterGain.gain.value = isMuted ? 0 : 1;
+      const Ctx = window.AudioContext || window.webkitAudioContext;
+      if (!Ctx) return null; // Browser doesn't support Web Audio
+      try {
+        audioCtx = new Ctx();
+        masterGain = audioCtx.createGain();
+        masterGain.connect(audioCtx.destination);
+        masterGain.gain.value = isMuted ? 0 : 1;
+      } catch (e) {
+        console.warn("Failed to create AudioContext:", e);
+        return null;
+      }
     }
     // Handle browser autoplay policy
     if (audioCtx.state === "suspended") {
-      audioCtx.resume();
+      audioCtx.resume().catch(() => {});
     }
     return audioCtx;
   }
 
   function setMuted(muted) {
-    if (masterGain) {
-      masterGain.gain.setTargetAtTime(
-        muted ? 0 : 1,
-        audioCtx.currentTime,
-        0.05,
-      );
+    if (masterGain && audioCtx) {
+      try {
+        masterGain.gain.setTargetAtTime(
+          muted ? 0 : 1,
+          audioCtx.currentTime,
+          0.05,
+        );
+      } catch (_) {}
     }
   }
 
   // ── Engine hum ──────────────────────────────────────────
   function startEngineHum() {
     const ctx = ensureCtx();
+    if (!ctx) return;
     stopEngineHum(); // clean up any previous
 
     const freqs = [80, 100]; // different pitch per player
@@ -213,6 +222,7 @@ const Audio = (() => {
   // ── Countdown beep ─────────────────────────────────────
   function playCountdownBeep(isGo) {
     const ctx = ensureCtx();
+    if (!ctx) return;
     const osc = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.type = "sine";
@@ -228,6 +238,7 @@ const Audio = (() => {
   // ── Crash sound ────────────────────────────────────────
   function playCrash() {
     const ctx = ensureCtx();
+    if (!ctx) return;
 
     // Noise burst
     const bufferSize = ctx.sampleRate * 0.3;
@@ -263,6 +274,7 @@ const Audio = (() => {
   // ── Match fanfare ──────────────────────────────────────
   function playFanfare() {
     const ctx = ensureCtx();
+    if (!ctx) return;
     const notes = [523.25, 659.25, 783.99, 1046.5]; // C5 E5 G5 C6
     notes.forEach((freq, i) => {
       const osc = ctx.createOscillator();
@@ -297,8 +309,10 @@ const Audio = (() => {
 })();
 
 // Ensure AudioContext is created on first user interaction (autoplay policy)
-document.addEventListener("click", () => Audio.ensureCtx(), { once: true });
-document.addEventListener("keydown", () => Audio.ensureCtx(), { once: true });
+document.addEventListener("click", () => GameAudio.ensureCtx(), { once: true });
+document.addEventListener("keydown", () => GameAudio.ensureCtx(), {
+  once: true,
+});
 
 // ─── State Machine ───────────────────────────────────────────
 
@@ -328,7 +342,7 @@ function setState(newState) {
       for (const p of players) {
         p.nextDirection = null;
       }
-      Audio.stopEngineHum();
+      GameAudio.stopEngineHum();
       break;
     case STATE.ROUND_OVER:
       clearTimeout(roundOverTimeout);
@@ -348,11 +362,11 @@ function setState(newState) {
     case STATE.COUNTDOWN:
       countdownValue = CONFIG.countdownDuration;
       showMessage(countdownEl, countdownValue);
-      Audio.playCountdownBeep(false);
+      GameAudio.playCountdownBeep(false);
       startCountdownTimer();
       break;
     case STATE.PLAYING:
-      Audio.startEngineHum();
+      GameAudio.startEngineHum();
       startTickLoop();
       break;
     case STATE.ROUND_OVER:
@@ -381,7 +395,7 @@ function setState(newState) {
       }
       matchWinnerTextEl.textContent = winnerText;
       matchResultEl.classList.remove("hidden");
-      Audio.playFanfare();
+      GameAudio.playFanfare();
       break;
     }
   }
@@ -458,7 +472,7 @@ function renderLives() {
 }
 
 function showMessage(el, text) {
-  el.textContent = text || "";
+  el.textContent = text != null ? String(text) : "";
   el.classList.remove("hidden");
 }
 
@@ -574,7 +588,7 @@ function toggleMute() {
   isMuted = !isMuted;
   muteIcon.textContent = isMuted ? "🔇" : "🔊";
   muteBtn.classList.toggle("muted", isMuted);
-  Audio.setMuted(isMuted);
+  GameAudio.setMuted(isMuted);
 }
 
 muteBtn.addEventListener("click", toggleMute);
@@ -639,8 +653,13 @@ function resumeGame() {
 }
 
 document.addEventListener("visibilitychange", onVisibilityChange);
-window.addEventListener("blur", pauseGame);
-window.addEventListener("focus", resumeGame);
+// Defer blur/focus listeners — attach after a short delay so the
+// game doesn't immediately pause on page load if the window
+// doesn't yet have focus (common with file:// opens, dev tools, etc.)
+setTimeout(() => {
+  window.addEventListener("blur", pauseGame);
+  window.addEventListener("focus", resumeGame);
+}, 1000);
 
 // ─── Game State Transitions ──────────────────────────────────
 
@@ -718,10 +737,10 @@ function startCountdownTimer() {
     countdownValue--;
     if (countdownValue > 0) {
       showMessage(countdownEl, countdownValue);
-      Audio.playCountdownBeep(false);
+      GameAudio.playCountdownBeep(false);
     } else if (countdownValue === 0) {
       showMessage(countdownEl, "GO!");
-      Audio.playCountdownBeep(true);
+      GameAudio.playCountdownBeep(true);
     } else {
       // Countdown finished → transition to PLAYING
       setState(STATE.PLAYING);
@@ -743,7 +762,7 @@ function startTickLoop() {
  * Deducts lives, shows result, triggers transition to ROUND_OVER.
  */
 function endRound(message) {
-  Audio.playCrash();
+  GameAudio.playCrash();
   showMessage(roundResultEl, message);
   renderLives();
 
@@ -1002,5 +1021,17 @@ function render() {
 }
 
 // ─── Boot ────────────────────────────────────────────────────
-render();
-initMatch();
+try {
+  initMatch(); // Must come first — initialises grid, players, and starts countdown
+  render(); // Then start the render loop (which reads from grid)
+} catch (e) {
+  console.error("TRON boot failed:", e);
+  // Show error on screen as fallback
+  const errDiv = document.createElement("div");
+  errDiv.style.cssText =
+    "position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);" +
+    "color:#ff4444;font:bold 20px monospace;text-align:center;z-index:999;";
+  errDiv.textContent =
+    "Game failed to start. Check console. Error: " + e.message;
+  document.body.appendChild(errDiv);
+}
