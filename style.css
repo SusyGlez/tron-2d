@@ -1,0 +1,261 @@
+/* ============================================
+   TRON Light Cycles — Styles
+   ============================================ */
+
+/* --- Reset & Base --- */
+*,
+*::before,
+*::after {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: #0a0a1a;
+  font-family: "Courier New", Courier, monospace;
+  color: #ffffff;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+/* --- Canvas --- */
+#gameCanvas {
+  display: block;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  /* Dimensions set by JS to maintain aspect ratio */
+}
+
+/* --- HUD Overlay --- */
+#hud {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10;
+}
+
+/* --- Lives Display --- */
+.lives-display {
+  position: absolute;
+  top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 1.2rem;
+  text-transform: uppercase;
+  letter-spacing: 2px;
+}
+
+.lives-left {
+  left: 24px;
+}
+
+.lives-right {
+  right: 24px;
+}
+
+.lives-label {
+  font-weight: bold;
+  font-size: 1rem;
+  opacity: 0.8;
+}
+
+#p1-lives .lives-label {
+  color: #00ffff;
+  text-shadow:
+    0 0 8px #00ffff,
+    0 0 16px #00ffff;
+}
+
+#p2-lives .lives-label {
+  color: #ff8800;
+  text-shadow:
+    0 0 8px #ff8800,
+    0 0 16px #ff8800;
+}
+
+.lives-icons {
+  display: flex;
+  gap: 4px;
+}
+
+.life-pip {
+  width: 12px;
+  height: 12px;
+  border-radius: 2px;
+}
+
+#p1-lives .life-pip {
+  background: #00ffff;
+  box-shadow:
+    0 0 6px #00ffff,
+    0 0 12px #00ffff;
+}
+
+#p2-lives .life-pip {
+  background: #ff8800;
+  box-shadow:
+    0 0 6px #ff8800,
+    0 0 12px #ff8800;
+}
+
+.life-pip.lost {
+  opacity: 0.2;
+  box-shadow: none;
+}
+
+/* --- Centre Message Overlay --- */
+#message-overlay {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+}
+
+.message {
+  font-size: 3rem;
+  font-weight: bold;
+  letter-spacing: 4px;
+  text-transform: uppercase;
+}
+
+.message.hidden {
+  display: none;
+}
+
+/* Countdown styling */
+#countdown {
+  color: #ffffff;
+  text-shadow:
+    0 0 10px #ffffff,
+    0 0 20px #ffffff,
+    0 0 40px #00ffff;
+  font-size: 5rem;
+}
+
+/* Round result styling */
+#round-result {
+  color: #ff4444;
+  text-shadow:
+    0 0 10px #ff4444,
+    0 0 20px #ff4444,
+    0 0 40px #ff0000;
+  font-size: 2.2rem;
+}
+
+/* Match result styling */
+#match-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  pointer-events: auto;
+}
+
+#match-result.hidden {
+  display: none;
+}
+
+#match-winner-text {
+  font-size: 3rem;
+  color: #ffffff;
+  text-shadow:
+    0 0 10px #ffffff,
+    0 0 30px #00ffff,
+    0 0 60px #00ffff;
+  letter-spacing: 4px;
+}
+
+.restart-hint {
+  font-size: 0.9rem;
+  opacity: 0.5;
+  letter-spacing: 1px;
+}
+
+/* --- Neon Button Style --- */
+.neon-btn {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 1.1rem;
+  font-weight: bold;
+  letter-spacing: 2px;
+  text-transform: uppercase;
+  color: #00ffff;
+  background: transparent;
+  border: 2px solid #00ffff;
+  padding: 10px 28px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow:
+    0 0 6px #00ffff,
+    inset 0 0 6px rgba(0, 255, 255, 0.15);
+}
+
+.neon-btn:hover {
+  background: rgba(0, 255, 255, 0.1);
+  box-shadow:
+    0 0 12px #00ffff,
+    0 0 24px #00ffff,
+    inset 0 0 12px rgba(0, 255, 255, 0.25);
+}
+
+.neon-btn:active {
+  background: rgba(0, 255, 255, 0.2);
+}
+
+/* --- Mute Button --- */
+.mute-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  z-index: 20;
+  padding: 6px 12px;
+  font-size: 1.4rem;
+  border-width: 1px;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+.mute-btn.muted {
+  opacity: 0.4;
+  box-shadow: none;
+}
+
+.mute-btn.muted:hover {
+  opacity: 0.7;
+}
+
+/* --- Pause Overlay --- */
+#pause-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.5);
+  z-index: 15;
+}
+
+#pause-overlay.hidden {
+  display: none;
+}
+
+.pause-text {
+  font-size: 4rem;
+  font-weight: bold;
+  letter-spacing: 8px;
+  text-transform: uppercase;
+  color: #ffffff;
+  text-shadow:
+    0 0 10px #ffffff,
+    0 0 30px #00ffff;
+  opacity: 0.8;
+}

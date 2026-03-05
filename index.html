@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>TRON Light Cycles</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <!-- Game Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <!-- HUD Overlay -->
+    <div id="hud">
+      <!-- Player 1 Lives (top-left) -->
+      <div id="p1-lives" class="lives-display lives-left">
+        <span class="lives-label">P1</span>
+        <span class="lives-icons" data-player="1"></span>
+      </div>
+
+      <!-- Player 2 Lives (top-right) -->
+      <div id="p2-lives" class="lives-display lives-right">
+        <span class="lives-label">P2</span>
+        <span class="lives-icons" data-player="2"></span>
+      </div>
+
+      <!-- Centre Message Area (countdown, round result, match winner) -->
+      <div id="message-overlay">
+        <div id="countdown" class="message hidden"></div>
+        <div id="round-result" class="message hidden"></div>
+        <div id="match-result" class="message hidden">
+          <div id="match-winner-text"></div>
+          <button id="restart-btn" class="neon-btn">PLAY AGAIN</button>
+          <div class="restart-hint">or press ENTER</div>
+        </div>
+      </div>
+
+      <!-- Pause overlay -->
+      <div id="pause-overlay" class="hidden">
+        <div class="pause-text">PAUSED</div>
+      </div>
+    </div>
+
+    <!-- Mute Toggle Button -->
+    <button id="mute-btn" class="neon-btn mute-btn" title="Toggle Audio (M)">
+      <span id="mute-icon">🔊</span>
+    </button>
+
+    <script src="game.js"></script>
+  </body>
+</html>
