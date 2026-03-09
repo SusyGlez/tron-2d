@@ -7,6 +7,43 @@
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
+    <!-- Start Screen -->
+    <div id="start-screen">
+      <div class="start-content">
+        <h1 class="start-title">TRON</h1>
+        <div class="start-subtitle">LIGHT CYCLES</div>
+        <div class="start-controls">
+          <div class="control-group">
+            <span class="control-label">PLAYER 1</span>
+            <span class="control-keys">W A S D</span>
+          </div>
+          <div class="control-group">
+            <span class="control-label">PLAYER 2</span>
+            <span class="control-keys">↑ ← ↓ →</span>
+          </div>
+        </div>
+        <div class="start-powerups">
+          <div class="powerup-legend-title">POWERUPS</div>
+          <div class="powerup-legend">
+            <span class="powerup-item"
+              ><span class="pu-icon pu-speed">⚡</span> Speed Boost</span
+            >
+            <span class="powerup-item"
+              ><span class="pu-icon pu-shield">🛡</span> Shield</span
+            >
+            <span class="powerup-item"
+              ><span class="pu-icon pu-clear">💥</span> Trail Clear</span
+            >
+            <span class="powerup-item"
+              ><span class="pu-icon pu-slow">🐢</span> Slowdown</span
+            >
+          </div>
+        </div>
+        <button id="start-btn" class="neon-btn start-btn">START GAME</button>
+        <div class="start-hint">or press ENTER</div>
+      </div>
+    </div>
+
     <!-- Game Canvas -->
     <canvas id="gameCanvas"></canvas>
 
@@ -16,12 +53,14 @@
       <div id="p1-lives" class="lives-display lives-left">
         <span class="lives-label">P1</span>
         <span class="lives-icons" data-player="1"></span>
+        <span class="effect-icons" id="p1-effects"></span>
       </div>
 
       <!-- Player 2 Lives (top-right) -->
       <div id="p2-lives" class="lives-display lives-right">
         <span class="lives-label">P2</span>
         <span class="lives-icons" data-player="2"></span>
+        <span class="effect-icons" id="p2-effects"></span>
       </div>
 
       <!-- Centre Message Area (countdown, round result, match winner) -->
@@ -38,10 +77,14 @@
       <!-- Pause overlay -->
       <div id="pause-overlay" class="hidden">
         <div class="pause-text">PAUSED</div>
+        <div class="pause-hint">Press P or ESC to resume</div>
       </div>
     </div>
 
-    <!-- Mute Toggle Button -->
+    <!-- Control Buttons -->
+    <button id="pause-btn" class="neon-btn pause-btn" title="Pause (P)">
+      <span id="pause-icon">⏸</span>
+    </button>
     <button id="mute-btn" class="neon-btn mute-btn" title="Toggle Audio (M)">
       <span id="mute-icon">🔊</span>
     </button>

@@ -259,3 +259,168 @@ body {
     0 0 30px #00ffff;
   opacity: 0.8;
 }
+
+.pause-hint {
+  font-size: 0.9rem;
+  opacity: 0.4;
+  letter-spacing: 2px;
+  margin-top: 16px;
+}
+
+/* --- Start Screen --- */
+#start-screen {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #0a0a1a;
+  z-index: 100;
+}
+
+#start-screen.hidden {
+  display: none;
+}
+
+.start-content {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+}
+
+.start-title {
+  font-family: "Courier New", Courier, monospace;
+  font-size: 6rem;
+  font-weight: bold;
+  color: #00ffff;
+  text-shadow:
+    0 0 20px #00ffff,
+    0 0 40px #00ffff,
+    0 0 80px #0044ff;
+  letter-spacing: 16px;
+  margin: 0;
+}
+
+.start-subtitle {
+  font-size: 1.5rem;
+  color: #4466ff;
+  letter-spacing: 12px;
+  text-shadow: 0 0 10px #4466ff;
+}
+
+.start-controls {
+  display: flex;
+  gap: 60px;
+  margin: 20px 0;
+}
+
+.control-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.control-label {
+  font-size: 0.9rem;
+  opacity: 0.6;
+  letter-spacing: 2px;
+}
+
+.control-keys {
+  font-size: 1.2rem;
+  color: #ffffff;
+  letter-spacing: 4px;
+}
+
+.start-powerups {
+  margin: 10px 0;
+}
+
+.powerup-legend-title {
+  font-size: 0.9rem;
+  opacity: 0.6;
+  letter-spacing: 3px;
+  margin-bottom: 10px;
+}
+
+.powerup-legend {
+  display: flex;
+  gap: 24px;
+}
+
+.powerup-item {
+  font-size: 0.85rem;
+  color: #cccccc;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pu-icon {
+  font-size: 1.1rem;
+}
+
+.pu-speed {
+  filter: drop-shadow(0 0 4px #ffff00);
+}
+
+.pu-shield {
+  filter: drop-shadow(0 0 4px #00ff00);
+}
+
+.pu-clear {
+  filter: drop-shadow(0 0 4px #ff00ff);
+}
+
+.pu-slow {
+  filter: drop-shadow(0 0 4px #00ccff);
+}
+
+.start-btn {
+  font-size: 1.4rem;
+  padding: 14px 40px;
+  margin-top: 16px;
+}
+
+.start-hint {
+  font-size: 0.8rem;
+  opacity: 0.4;
+  letter-spacing: 1px;
+}
+
+/* --- Pause Button --- */
+.pause-btn {
+  position: absolute;
+  bottom: 16px;
+  right: 80px;
+  z-index: 20;
+  padding: 6px 12px;
+  font-size: 1.4rem;
+  border-width: 1px;
+  line-height: 1;
+  pointer-events: auto;
+}
+
+/* --- Effect Indicators --- */
+.effect-icons {
+  display: flex;
+  gap: 4px;
+  margin-left: 6px;
+}
+
+.effect-icon {
+  font-size: 0.9rem;
+  animation: pulse-effect 1s infinite;
+}
+
+@keyframes pulse-effect {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.4;
+  }
+}

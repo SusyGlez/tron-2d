@@ -44,6 +44,15 @@ const CONFIG = {
   trailGlowBlur: 8,
   bikeGlowBlur: 16,
   borderGlowBlur: 12,
+
+  // Powerups
+  powerupSpawnInterval: 4000, // ms between spawn attempts
+  powerupMaxOnGrid: 3,
+  powerupTypes: ["SPEED", "SHIELD", "CLEAR", "SLOW"],
+  powerupSpeedDuration: 250, // ticks (250 × 50ms = ~12.5 seconds)
+  powerupSlowDuration: 200, // ticks (~10 seconds)
+  powerupShieldInvincibility: 10, // ticks of invincibility after shield absorbs a crash
+  powerupClearFraction: 0.3, // fraction of opponent trail to erase
 };
 
 // Pre-compute spawn tile positions from fractional config
@@ -109,6 +118,13 @@ const pauseOverlay = document.getElementById("pause-overlay");
 const p1LivesIcons = document.querySelector("#p1-lives .lives-icons");
 const p2LivesIcons = document.querySelector("#p2-lives .lives-icons");
 
+const startScreen = document.getElementById("start-screen");
+const startBtn = document.getElementById("start-btn");
+const pauseBtn = document.getElementById("pause-btn");
+const pauseIcon = document.getElementById("pause-icon");
+const p1Effects = document.getElementById("p1-effects");
+const p2Effects = document.getElementById("p2-effects");
+
 // ─── Game Variables ──────────────────────────────────────────
 let gameState = null;
 let grid = []; // 2D array [x][y] → 0 | 1 | 2
@@ -124,6 +140,25 @@ let isPaused = false;
 let isMuted = false;
 let collisionTiles = []; // [{x, y}] for crash effect rendering
 let collisionTime = 0; // timestamp of collision for effect timing
+
+// Powerup state
+let powerups = []; // [{type, x, y}] active powerups on the grid
+let playerEffects = [
+  {
+    shield: false,
+    speedRemaining: 0,
+    slowRemaining: 0,
+    invincibleRemaining: 0,
+  },
+  {
+    shield: false,
+    speedRemaining: 0,
+    slowRemaining: 0,
+    invincibleRemaining: 0,
+  },
+];
+let powerupSpawnTimer = null;
+let gameStarted = false;
 
 // ─── Audio Manager (Web Audio API) ───────────────────────────
 
@@ -296,6 +331,42 @@ const GameAudio = (() => {
     playCountdownBeep(true);
   }
 
+  // ── Powerup pickup ──────────────────────────────────
+  function playPickup() {
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    const notes = [660, 880];
+    notes.forEach((freq, i) => {
+      const osc = ctx.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = freq;
+      const gain = ctx.createGain();
+      gain.gain.value = 0.15;
+      gain.gain.setTargetAtTime(0, ctx.currentTime + i * 0.08 + 0.08, 0.03);
+      osc.connect(gain);
+      gain.connect(masterGain);
+      osc.start(ctx.currentTime + i * 0.08);
+      osc.stop(ctx.currentTime + i * 0.08 + 0.15);
+    });
+  }
+
+  // ── Shield break ────────────────────────────────────
+  function playShieldBreak() {
+    const ctx = ensureCtx();
+    if (!ctx) return;
+    const osc = ctx.createOscillator();
+    osc.type = "triangle";
+    osc.frequency.value = 300;
+    osc.frequency.setTargetAtTime(100, ctx.currentTime, 0.15);
+    const gain = ctx.createGain();
+    gain.gain.value = 0.2;
+    gain.gain.setTargetAtTime(0, ctx.currentTime + 0.15, 0.06);
+    osc.connect(gain);
+    gain.connect(masterGain);
+    osc.start();
+    osc.stop(ctx.currentTime + 0.3);
+  }
+
   return {
     ensureCtx,
     setMuted,
@@ -305,6 +376,8 @@ const GameAudio = (() => {
     playCrash,
     playFanfare,
     playRoundStart,
+    playPickup,
+    playShieldBreak,
   };
 })();
 
@@ -343,6 +416,7 @@ function setState(newState) {
         p.nextDirection = null;
       }
       GameAudio.stopEngineHum();
+      stopPowerupSpawning();
       break;
     case STATE.ROUND_OVER:
       clearTimeout(roundOverTimeout);
@@ -368,6 +442,7 @@ function setState(newState) {
     case STATE.PLAYING:
       GameAudio.startEngineHum();
       startTickLoop();
+      startPowerupSpawning();
       break;
     case STATE.ROUND_OVER:
       collisionTime = performance.now();
@@ -458,6 +533,142 @@ function initGrid() {
   }
 }
 
+// ─── Powerup System ──────────────────────────────────────
+
+const POWERUP_VISUALS = {
+  SPEED: { color: "#ffff00", symbol: "⚡" },
+  SHIELD: { color: "#00ff00", symbol: "🛡" },
+  CLEAR: { color: "#ff00ff", symbol: "💥" },
+  SLOW: { color: "#00ccff", symbol: "🐢" },
+};
+
+function spawnPowerup() {
+  if (powerups.length >= CONFIG.powerupMaxOnGrid) return;
+  // Collect empty cells away from borders and bikes
+  const emptyCells = [];
+  for (let x = 2; x < CONFIG.gridWidth - 2; x++) {
+    for (let y = 2; y < CONFIG.gridHeight - 2; y++) {
+      if (grid[x][y] !== 0) continue;
+      let tooClose = false;
+      for (const p of players) {
+        if (Math.abs(p.x - x) <= 3 && Math.abs(p.y - y) <= 3) {
+          tooClose = true;
+          break;
+        }
+      }
+      if (tooClose) continue;
+      if (powerups.some((pu) => pu.x === x && pu.y === y)) continue;
+      emptyCells.push({ x, y });
+    }
+  }
+  if (emptyCells.length === 0) return;
+  const cell = emptyCells[Math.floor(Math.random() * emptyCells.length)];
+  const type =
+    CONFIG.powerupTypes[Math.floor(Math.random() * CONFIG.powerupTypes.length)];
+  powerups.push({ type, x: cell.x, y: cell.y });
+}
+
+function collectPowerup(playerIndex, powerupIndex) {
+  const pu = powerups[powerupIndex];
+  GameAudio.playPickup();
+  switch (pu.type) {
+    case "SPEED":
+      playerEffects[playerIndex].speedRemaining = CONFIG.powerupSpeedDuration;
+      break;
+    case "SHIELD":
+      playerEffects[playerIndex].shield = true;
+      break;
+    case "SLOW": {
+      const oppIdx2 = playerIndex === 0 ? 1 : 0;
+      playerEffects[oppIdx2].slowRemaining = CONFIG.powerupSlowDuration;
+      break;
+    }
+    case "CLEAR": {
+      const opponentId = playerIndex === 0 ? 2 : 1;
+      const oppIdx = playerIndex === 0 ? 1 : 0;
+      const trailTiles = [];
+      for (let x = 0; x < CONFIG.gridWidth; x++) {
+        for (let y = 0; y < CONFIG.gridHeight; y++) {
+          if (grid[x][y] === opponentId) {
+            if (x !== players[oppIdx].x || y !== players[oppIdx].y) {
+              trailTiles.push({ x, y });
+            }
+          }
+        }
+      }
+      const toRemove = Math.ceil(
+        trailTiles.length * CONFIG.powerupClearFraction,
+      );
+      for (let i = 0; i < toRemove && trailTiles.length > 0; i++) {
+        const idx = Math.floor(Math.random() * trailTiles.length);
+        const tile = trailTiles.splice(idx, 1)[0];
+        grid[tile.x][tile.y] = 0;
+      }
+      break;
+    }
+  }
+  powerups.splice(powerupIndex, 1);
+}
+
+function startPowerupSpawning() {
+  stopPowerupSpawning();
+  powerupSpawnTimer = setInterval(() => {
+    if (gameState === STATE.PLAYING && !isPaused) {
+      spawnPowerup();
+    }
+  }, CONFIG.powerupSpawnInterval);
+}
+
+function stopPowerupSpawning() {
+  if (powerupSpawnTimer) {
+    clearInterval(powerupSpawnTimer);
+    powerupSpawnTimer = null;
+  }
+}
+
+function clearAllPowerups() {
+  powerups = [];
+  for (let i = 0; i < 2; i++) {
+    playerEffects[i] = {
+      shield: false,
+      speedRemaining: 0,
+      slowRemaining: 0,
+      invincibleRemaining: 0,
+    };
+  }
+  stopPowerupSpawning();
+}
+
+function renderEffectIcons() {
+  [p1Effects, p2Effects].forEach((container, idx) => {
+    container.innerHTML = "";
+    if (playerEffects[idx].shield) {
+      const span = document.createElement("span");
+      span.className = "effect-icon";
+      span.textContent = "🛡";
+      container.appendChild(span);
+    }
+    if (playerEffects[idx].speedRemaining > 0) {
+      const span = document.createElement("span");
+      span.className = "effect-icon";
+      span.textContent = "⚡";
+      container.appendChild(span);
+    }
+    if (playerEffects[idx].slowRemaining > 0) {
+      const span = document.createElement("span");
+      span.className = "effect-icon";
+      span.textContent = "🐢";
+      container.appendChild(span);
+    }
+    if (playerEffects[idx].invincibleRemaining > 0) {
+      const span = document.createElement("span");
+      span.className = "effect-icon";
+      span.textContent = "✨";
+      container.appendChild(span);
+    }
+  });
+}
+
 // ─── HUD Helpers ─────────────────────────────────────────────
 function renderLives() {
   [p1LivesIcons, p2LivesIcons].forEach((container, idx) => {
@@ -528,6 +739,21 @@ function handleKeyDown(e) {
     return;
   }
 
+  // Pause toggle — available during gameplay
+  if (e.code === "KeyP" || e.code === "Escape") {
+    if (gameStarted && gameState !== STATE.MATCH_OVER && gameState !== null) {
+      togglePause();
+      return;
+    }
+  }
+
+  // Start screen — Enter starts the game
+  if (!gameStarted && (e.code === "Enter" || e.code === "Space")) {
+    e.preventDefault();
+    beginGame();
+    return;
+  }
+
   // Restart during MATCH_OVER
   if (
     gameState === STATE.MATCH_OVER &&
@@ -593,6 +819,17 @@ function toggleMute() {
 
 muteBtn.addEventListener("click", toggleMute);
 
+// ─── Pause Toggle ───────────────────────────────────────
+function togglePause() {
+  if (isPaused) {
+    resumeGame();
+  } else {
+    pauseGame();
+  }
+}
+
+pauseBtn.addEventListener("click", togglePause);
+
 // ─── Focus / Blur (Pause) ────────────────────────────────────
 function onVisibilityChange() {
   if (document.hidden) {
@@ -610,6 +847,8 @@ function pauseGame() {
   tickTimer = null;
   clearInterval(countdownTimer);
   countdownTimer = null;
+  clearInterval(powerupSpawnTimer);
+  powerupSpawnTimer = null;
   // Pause the round-over timeout by recording remaining time
   if (roundOverTimeout) {
     clearTimeout(roundOverTimeout);
@@ -620,16 +859,19 @@ function pauseGame() {
     if (roundOverPauseRemaining < 0) roundOverPauseRemaining = 0;
   }
   pauseOverlay.classList.remove("hidden");
+  pauseIcon.textContent = "▶";
 }
 
 function resumeGame() {
   if (!isPaused) return;
   isPaused = false;
   pauseOverlay.classList.add("hidden");
+  pauseIcon.textContent = "⏸";
   // Restart the appropriate timer for the current state
   switch (gameState) {
     case STATE.PLAYING:
       startTickLoop();
+      startPowerupSpawning();
       break;
     case STATE.COUNTDOWN:
       startCountdownTimer();
@@ -697,6 +939,7 @@ function initMatch() {
       CONFIG.p2ColorDim,
     ),
   ];
+  clearAllPowerups();
   renderLives();
   startRound();
 }
@@ -721,6 +964,16 @@ function startRound() {
 
   collisionTiles = [];
   collisionTime = 0;
+  powerups = [];
+  for (let i = 0; i < 2; i++) {
+    playerEffects[i] = {
+      shield: false,
+      speedRemaining: 0,
+      slowRemaining: 0,
+      invincibleRemaining: 0,
+    };
+  }
+  renderEffectIcons();
 
   hideAllMessages();
 
@@ -788,61 +1041,78 @@ function restartMatch() {
 restartBtn.addEventListener("click", restartMatch);
 
 // ─── Game Tick (Fixed Step) ──────────────────────────────────
-function gameTick() {
-  if (gameState !== STATE.PLAYING) return;
 
-  // Apply buffered input
-  for (const p of players) {
-    if (p.nextDirection !== null) {
-      p.direction = p.nextDirection;
-      p.nextDirection = null;
+/**
+ * Attempt to move players and check for collisions.
+ * p1Moves/p2Moves indicate whether each player should move this step.
+ * Returns true if the round ended (crash), false otherwise.
+ */
+function moveStep(p1Moves, p2Moves) {
+  const newPositions = players.map((p, i) => {
+    const shouldMove = i === 0 ? p1Moves : p2Moves;
+    if (shouldMove && p.alive) {
+      return {
+        x: p.x + DIR[p.direction].x,
+        y: p.y + DIR[p.direction].y,
+        moved: true,
+      };
     }
-  }
+    return { x: p.x, y: p.y, moved: false };
+  });
 
-  // Calculate new positions
-  const newPositions = players.map((p) => ({
-    x: p.x + DIR[p.direction].x,
-    y: p.y + DIR[p.direction].y,
-  }));
-
-  // Collision detection
   const crashed = [false, false];
+  const wallCrash = [false, false]; // border crashes can't be absorbed
 
   for (let i = 0; i < 2; i++) {
+    if (!newPositions[i].moved) continue;
     const nx = newPositions[i].x;
     const ny = newPositions[i].y;
 
-    // Border collision
     if (nx < 0 || nx >= CONFIG.gridWidth || ny < 0 || ny >= CONFIG.gridHeight) {
       crashed[i] = true;
+      wallCrash[i] = true;
       continue;
     }
-
-    // Trail collision (own or opponent)
     if (grid[nx][ny] !== 0) {
       crashed[i] = true;
-      continue;
     }
   }
 
-  // Head-on collision: same destination tile
-  if (
-    newPositions[0].x === newPositions[1].x &&
-    newPositions[0].y === newPositions[1].y
-  ) {
-    crashed[0] = true;
-    crashed[1] = true;
+  // Head-on collision: same destination tile (only if both moved)
+  if (newPositions[0].moved && newPositions[1].moved) {
+    if (
+      newPositions[0].x === newPositions[1].x &&
+      newPositions[0].y === newPositions[1].y
+    ) {
+      crashed[0] = true;
+      crashed[1] = true;
+    }
+    // Bikes swap tiles (crossed paths)
+    if (
+      newPositions[0].x === players[1].x &&
+      newPositions[0].y === players[1].y &&
+      newPositions[1].x === players[0].x &&
+      newPositions[1].y === players[0].y
+    ) {
+      crashed[0] = true;
+      crashed[1] = true;
+    }
   }
 
-  // Head-on collision: bikes swap tiles (crossed paths)
-  if (
-    newPositions[0].x === players[1].x &&
-    newPositions[0].y === players[1].y &&
-    newPositions[1].x === players[0].x &&
-    newPositions[1].y === players[0].y
-  ) {
-    crashed[0] = true;
-    crashed[1] = true;
+  // Shield / invincibility absorption: negate trail crashes (not wall crashes)
+  for (let i = 0; i < 2; i++) {
+    if (crashed[i] && wallCrash[i]) continue; // walls always kill
+    if (crashed[i] && playerEffects[i].invincibleRemaining > 0) {
+      crashed[i] = false;
+      newPositions[i].phaseThrough = true;
+    } else if (crashed[i] && playerEffects[i].shield) {
+      playerEffects[i].shield = false;
+      crashed[i] = false;
+      playerEffects[i].invincibleRemaining = CONFIG.powerupShieldInvincibility;
+      newPositions[i].phaseThrough = true;
+      GameAudio.playShieldBreak();
+      renderEffectIcons();
+    }
   }
 
   // Record collision tiles for crash FX
@@ -871,14 +1141,79 @@ function gameTick() {
       message = "PLAYER 2 CRASHES!";
     }
     endRound(message);
-    return;
+    return true;
   }
 
   // Move bikes & lay trail
   for (let i = 0; i < 2; i++) {
+    if (!newPositions[i].moved) continue;
     players[i].x = newPositions[i].x;
     players[i].y = newPositions[i].y;
-    grid[newPositions[i].x][newPositions[i].y] = i + 1;
+    // Don't lay trail on tiles we're phasing through (invincibility)
+    if (!newPositions[i].phaseThrough) {
+      grid[newPositions[i].x][newPositions[i].y] = i + 1;
+    }
+
+    // Check powerup collection
+    for (let j = powerups.length - 1; j >= 0; j--) {
+      if (powerups[j].x === players[i].x && powerups[j].y === players[i].y) {
+        collectPowerup(i, j);
+        renderEffectIcons();
+        break;
+      }
+    }
+  }
+
+  return false;
+}
+
+function gameTick() {
+  if (gameState !== STATE.PLAYING) return;
+
+  // Apply buffered input
+  for (const p of players) {
+    if (p.nextDirection !== null) {
+      p.direction = p.nextDirection;
+      p.nextDirection = null;
+    }
+  }
+
+  // Decrement effect timers
+  for (let i = 0; i < 2; i++) {
+    if (playerEffects[i].speedRemaining > 0) {
+      playerEffects[i].speedRemaining--;
+      if (playerEffects[i].speedRemaining <= 0) {
+        renderEffectIcons();
+      }
+    }
+    if (playerEffects[i].slowRemaining > 0) {
+      playerEffects[i].slowRemaining--;
+      if (playerEffects[i].slowRemaining <= 0) {
+        renderEffectIcons();
+      }
+    }
+    if (playerEffects[i].invincibleRemaining > 0) {
+      playerEffects[i].invincibleRemaining--;
+      if (playerEffects[i].invincibleRemaining <= 0) {
+        renderEffectIcons();
+      }
+    }
+  }
+
+  // Slowed players move only every 3rd tick (1/3 speed)
+  const p1Slow = playerEffects[0].slowRemaining > 0;
+  const p2Slow = playerEffects[1].slowRemaining > 0;
+  const p1Moves = !(p1Slow && playerEffects[0].slowRemaining % 3 !== 0);
+  const p2Moves = !(p2Slow && playerEffects[1].slowRemaining % 3 !== 0);
+
+  // Normal move (skipped for slowed players on even ticks)
+  if (moveStep(p1Moves, p2Moves)) return;
+
+  // Extra move for speed-boosted players (only if not slowed)
+  const p1Speed = playerEffects[0].speedRemaining > 0 && !p1Slow;
+  const p2Speed = playerEffects[1].speedRemaining > 0 && !p2Slow;
+  if (p1Speed || p2Speed) {
+    moveStep(p1Speed, p2Speed);
   }
 }
 
@@ -953,6 +1288,35 @@ function render() {
   }
   ctx.restore();
 
+  // ── 4b. Powerups ───────────────────────────────────────
+  if (powerups.length > 0) {
+    const now = performance.now();
+    ctx.save();
+    for (const pu of powerups) {
+      const vis = POWERUP_VISUALS[pu.type];
+      const pulse = 0.65 + 0.35 * Math.sin(now / 200);
+      ctx.shadowColor = vis.color;
+      ctx.shadowBlur = 12 * pulse;
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = vis.color;
+      ctx.fillRect(
+        pu.x * ts + ts * 0.1,
+        pu.y * ts + ts * 0.1,
+        ts * 0.8,
+        ts * 0.8,
+      );
+      ctx.globalAlpha = 1;
+      // Symbol
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = "#000";
+      ctx.font = `${Math.floor(ts * 0.55)}px sans-serif`;
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(vis.symbol, pu.x * ts + ts / 2, pu.y * ts + ts / 2 + 1);
+    }
+    ctx.restore();
+  }
+
   // ── 5. Bikes ───────────────────────────────────────────
   ctx.save();
   ctx.shadowBlur = CONFIG.bikeGlowBlur;
@@ -973,6 +1337,48 @@ function render() {
     const inset = ts * 0.25;
     ctx.fillRect(bx + inset, by + inset, ts - inset * 2, ts - inset * 2);
     ctx.shadowBlur = CONFIG.bikeGlowBlur;
+  }
+  ctx.restore();
+
+  // ── 5b. Shield / speed aura ──────────────────────────
+  ctx.save();
+  for (let i = 0; i < 2; i++) {
+    const p = players[i];
+    if (!p.alive && gameState !== STATE.ROUND_OVER) continue;
+    const bx = p.x * ts;
+    const by = p.y * ts;
+    if (playerEffects[i].shield) {
+      ctx.strokeStyle = "#00ff00";
+      ctx.shadowColor = "#00ff00";
+      ctx.shadowBlur = 10;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(bx - 2, by - 2, ts + 4, ts + 4);
+    }
+    if (playerEffects[i].speedRemaining > 0) {
+      const pulse = 0.5 + 0.5 * Math.sin(performance.now() / 100);
+      ctx.strokeStyle = `rgba(255, 255, 0, ${pulse})`;
+      ctx.shadowColor = "#ffff00";
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx - 3, by - 3, ts + 6, ts + 6);
+    }
+    if (playerEffects[i].slowRemaining > 0) {
+      const pulse = 0.4 + 0.6 * Math.sin(performance.now() / 300);
+      ctx.strokeStyle = `rgba(0, 204, 255, ${pulse})`;
+      ctx.shadowColor = "#00ccff";
+      ctx.shadowBlur = 8;
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(bx - 4, by - 4, ts + 8, ts + 8);
+    }
+    if (playerEffects[i].invincibleRemaining > 0) {
+      // Flashing white outline during invincibility
+      const flash = Math.sin(performance.now() / 50) > 0 ? 1 : 0.2;
+      ctx.strokeStyle = `rgba(255, 255, 255, ${flash})`;
+      ctx.shadowColor = "#ffffff";
+      ctx.shadowBlur = 14;
+      ctx.lineWidth = 2.5;
+      ctx.strokeRect(bx - 5, by - 5, ts + 10, ts + 10);
+    }
   }
   ctx.restore();
 
@@ -1020,10 +1426,39 @@ function render() {
   ctx.restore();
 }
 
-// ─── Boot ────────────────────────────────────────────────────
+// ─── Start Screen & Boot ─────────────────────────────────────
+
+function beginGame() {
+  if (gameStarted) return;
+  gameStarted = true;
+  startScreen.classList.add("hidden");
+  initMatch();
+}
+
+startBtn.addEventListener("click", beginGame);
+
 try {
-  initMatch(); // Must come first — initialises grid, players, and starts countdown
-  render(); // Then start the render loop (which reads from grid)
+  // Show start screen and start the render loop (grid is empty until game starts)
+  initGrid();
+  players = [
+    createPlayer(
+      1,
+      SPAWN.p1.x,
+      SPAWN.p1.y,
+      SPAWN.p1.direction,
+      CONFIG.p1Color,
+      CONFIG.p1ColorDim,
+    ),
+    createPlayer(
+      2,
+      SPAWN.p2.x,
+      SPAWN.p2.y,
+      SPAWN.p2.direction,
+      CONFIG.p2Color,
+      CONFIG.p2ColorDim,
+    ),
+  ];
+  render(); // Start render loop (draws the empty arena behind the start screen)
 } catch (e) {
   console.error("TRON boot failed:", e);
   // Show error on screen as fallback
