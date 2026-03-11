@@ -159,6 +159,7 @@ let playerEffects = [
 ];
 let powerupSpawnTimer = null;
 let gameStarted = false;
+let testMode = false; // hidden single-player test mode
 
 // ─── Audio Manager (Web Audio API) ───────────────────────────
 
@@ -747,9 +748,18 @@ function handleKeyDown(e) {
     }
   }
 
+  // Start screen — Shift+T activates hidden test mode
+  if (!gameStarted && e.code === "KeyT" && e.shiftKey) {
+    e.preventDefault();
+    testMode = true;
+    beginGame();
+    return;
+  }
+
   // Start screen — Enter starts the game
   if (!gameStarted && (e.code === "Enter" || e.code === "Space")) {
     e.preventDefault();
+    testMode = false;
     beginGame();
     return;
   }
@@ -939,6 +949,12 @@ function initMatch() {
       CONFIG.p2ColorDim,
     ),
   ];
+
+  // In test mode, player 2 is inactive
+  if (testMode) {
+    players[1].alive = false;
+  }
+
   clearAllPowerups();
   renderLives();
   startRound();
@@ -957,9 +973,11 @@ function startRound() {
     players[i].y = spawns[i].y;
     players[i].direction = spawns[i].direction;
     players[i].nextDirection = null;
-    players[i].alive = true;
-    // Mark spawn tile
-    grid[spawns[i].x][spawns[i].y] = i + 1;
+    players[i].alive = testMode && i === 1 ? false : true;
+    // Mark spawn tile (skip for inactive test-mode player)
+    if (players[i].alive) {
+      grid[spawns[i].x][spawns[i].y] = i + 1;
+    }
   }
 
   collisionTiles = [];
@@ -1140,6 +1158,10 @@ function moveStep(p1Moves, p2Moves) {
     } else {
       message = "PLAYER 2 CRASHES!";
     }
+
+    // In test mode, only end round when player 1 crashes
+    if (testMode && !crashed[0]) return false;
+
     endRound(message);
     return true;
   }
@@ -1154,9 +1176,11 @@ function moveStep(p1Moves, p2Moves) {
       grid[newPositions[i].x][newPositions[i].y] = i + 1;
     }
 
-    // Check powerup collection
+    // Check powerup collection (3x3 hitbox to match visual size)
     for (let j = powerups.length - 1; j >= 0; j--) {
-      if (powerups[j].x === players[i].x && powerups[j].y === players[i].y) {
+      const dx = Math.abs(powerups[j].x - players[i].x);
+      const dy = Math.abs(powerups[j].y - players[i].y);
+      if (dx <= 1 && dy <= 1) {
         collectPowerup(i, j);
         renderEffectIcons();
         break;
@@ -1300,16 +1324,16 @@ function render() {
       ctx.globalAlpha = pulse;
       ctx.fillStyle = vis.color;
       ctx.fillRect(
-        pu.x * ts + ts * 0.1,
-        pu.y * ts + ts * 0.1,
-        ts * 0.8,
-        ts * 0.8,
+        (pu.x - 1) * ts + ts * 0.1,
+        (pu.y - 1) * ts + ts * 0.1,
+        ts * 3 - ts * 0.2,
+        ts * 3 - ts * 0.2,
       );
       ctx.globalAlpha = 1;
       // Symbol
       ctx.shadowBlur = 0;
       ctx.fillStyle = "#000";
-      ctx.font = `${Math.floor(ts * 0.55)}px sans-serif`;
+      ctx.font = `${Math.floor(ts * 1.6)}px sans-serif`;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       ctx.fillText(vis.symbol, pu.x * ts + ts / 2, pu.y * ts + ts / 2 + 1);
@@ -1435,7 +1459,10 @@ function beginGame() {
   initMatch();
 }
 
-startBtn.addEventListener("click", beginGame);
+startBtn.addEventListener("click", () => {
+  testMode = false;
+  beginGame();
+});
 
 try {
   // Show start screen and start the render loop (grid is empty until game starts)
